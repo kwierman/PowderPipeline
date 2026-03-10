@@ -1,5 +1,9 @@
 # Powder Pipeline
 
+[Snow Analytics](public/SnowAnalytics.png)
+
+
+
 ## The Problem This Library Solves
 
 You're an avid skier. You intend on getting as many days on fresh snow as possible. The question that you pose year-after-year is: "Which pass should I buy? Where should I plan my trips?"
@@ -14,7 +18,21 @@ The problems faced here are:
 
 ## The Solution
 
-First, we need to do some web scraping.
+The solution is to gather as much information as possible from open sources. We can then create an output table and perform some analytics to get us the final ROI: # Days/ $Dollar for each pass.
+
+## The Approach
+
+Normally, I'd call this a methods session, but the intended audience would be an avid skier, so it's an approach.
+
+### Setup
+
+Clone this repo with 
+
+``` bash
+git clone https://github.com/kwierman/PowderPipeline
+```
+
+Then, edit the example config in `example_config.yml` to suit your system. Install in a `venv` using your tool of choice, and you're off to the races!
 
 ### 1. Use the internet's Way Back Machine to fetch the pass prices
 
@@ -54,7 +72,7 @@ This should output a CSV with the following schema:
 | `scraped_at` | str | ISO timestamp of when the script ran |
 | `notes` | str | Free-text notes / anomalies |
 
-I intend to put this step behind a CLI with the command:
+This is accessible from the CLI with the following command:
 
 ~~~ bash
 powderpipeline scrape ski-passes
@@ -62,7 +80,7 @@ powderpipeline scrape ski-passes
 
 In the future, we can replace this with two commands, one for backfilling the data, and one for getting the current price, and run this pipeline once a year on automation.
 
-> Before running any commands, reference, the setup guide below.
+> Before running any commands, reference, the setup guide above.
 
 ### 2. Obtain a list of resorts and which of the big passes (if any) they are associated with
 
@@ -134,10 +152,6 @@ Likewise, there is a Dashboard built with Plotly Dash, that you can bring up wit
 ~~~ bash
 powderpipeline viz
 ~~~
-
-# Configuration
-
-
 
 
 # References
