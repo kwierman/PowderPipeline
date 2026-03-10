@@ -1,6 +1,6 @@
 # Powder Pipeline
 
-[Snow Analytics](public/SnowAnalytics.png)
+<img src="public/SnowAnalytics.png" alt="Snow Analytics" width="400"/>
 
 
 
