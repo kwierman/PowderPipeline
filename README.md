@@ -1,5 +1,7 @@
 # Powder Pipeline
+An end-to-end data pipeline for skiers frustrated by snow conditions.
 
+> NOTE: I'm currently reviewing code and syncing to Github as I go. Until this note is removed, the tool will not function.
 
 <p align="center">
   <img class="center" src="public/SnowAnalytics.png" alt="Snow Analytics" width="400"/>
@@ -7,7 +9,7 @@
 
 
 
-## The Problem This Library Solves
+## The Problem This Package Solves
 
 You're an avid skier. You intend on getting as many days on fresh snow as possible. The question that you pose year-after-year is: "Which pass should I buy? Where should I plan my trips?"
 
