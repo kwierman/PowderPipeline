@@ -1,10 +1,10 @@
 from pydantic import BaseModel
 from pydantic_settings import SettingsConfigDict
-from pydantic_settings_yaml import YamlBaseSettings#, SettingsConfigDict
+from pydantic_settings_yaml import YamlBaseSettings  # , SettingsConfigDict
 from pathlib import Path
 
 
-#class Database(BaseModel):
+# class Database(BaseModel):
 #    host: str
 #    port: int
 """
@@ -33,11 +33,14 @@ class SkiResort(BaseModel):
     location: str
     pass_affiliation: str
 """
+
+
 class Settings(YamlBaseSettings):
-    model_config = SettingsConfigDict(yaml_file="config.yaml", extra='allow')
+    model_config = SettingsConfigDict(yaml_file="config.yaml", extra="allow")
     base_data_path: Path
-    base_db_path: Path
-    #ski_passes: list[SkiPass]
-    #snowfall: list[SnowFall]
-    #ski_resorts: list[SkiResort]
-    ski_resorts_replacement_csv: str
+    db_name: str
+    openairouter_api_key: str = ""
+    openairouter_model_name: str = "google/gemini-3-pro-preview"
+    openairouter_max_tokens: int = 2048
+    ski_passes: list[str] = []
+    pass_path: str = ""
