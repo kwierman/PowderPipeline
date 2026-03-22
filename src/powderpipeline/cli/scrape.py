@@ -1,45 +1,60 @@
-from typer import Typer
-from ..config import Settings
+import logging
+from datetime import datetime
 from pathlib import Path
+from typing import Optional
+
+import pandas as pd
+from rich.console import Console
+from rich.logging import RichHandler
+from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.table import Table
+from typer import Typer
+
+from ..config import load_settings
+from ..scrapers.ski_resorts import SkiResortScraper
+from ..warehouse import get_session
+
+console = Console()
+logger = logging.getLogger(__name__)
 
 scraper_app = Typer(help="Commands for scraping ski pass data")
 
-@scraper_app.command("ski-passes")
-def scrape_ski_passes(config_file: Path = Path("config.yaml")):
-    """
-    Scrape ski pass data from the web and save it to a file.
-    """
-    settings = Settings(config_file)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(message)s",
+    datefmt="[%X]",
+    handlers=[RichHandler(console=console, rich_tracebacks=True)],
+)
 
-    # Implementation for scraping ski passes would go here. This is a placeholder for the actual scraping logic.
-    print(f"Scraping ski pass data using settings from {config_file}...")
 
-@scraper_app.command('ski-resorts')
-def scrape_ski_resorts(config_file: Path = Path("config.yaml")):
+@scraper_app.command("ski-resorts")
+def scrape_ski_resorts(
+    config_file: Path = Path("config.yaml"),
+    headless: bool = True,
+):
     """
-    Scrape ski resort data from the web and save it to a file.
+    Scrape ski resort data from OnTheSnow.
     """
-    settings = Settings(config_file)
+    settings = load_settings(config_file)
+    with get_session(settings) as session:
+        console.print(
+            f"[blue]Scraping ski resort data using settings from {config_file}...[/blue]"
+        )
+        with SkiResortScraper(
+            session=session,
+            writer=None,
+            settings=settings,
+            headless=headless,
+        ) as scraper:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                task = progress.add_task(
+                    "[cyan]Scraping ski resorts worldwide...", total=None
+                )
+                scraper.scrape()
+                progress.update(task, completed=True)
 
-    # Implementation for scraping ski resorts would go here. This is a placeholder for the actual scraping logic.
-    print(f"Scraping ski resort data using settings from {config_file}...")
-
-@scraper_app.command('snow-conditions')
-def scrape_snow_conditions(config_file: Path = Path("config.yaml")):
-    """
-    Scrape snow condition data from the web and save it to a file.
-    """
-    settings = Settings(config_file)
-
-    # Implementation for scraping snow conditions would go here. This is a placeholder for the actual scraping logic.
-    print(f"Scraping snow condition data using settings from {config_file}...")
-
-@scraper_app.command('snow-conditions-today')
-def scrape_snow_conditions_today(config_file: Path = Path("config.yaml")):
-    """
-    Scrape snow condition data from the web and save it to a file.
-    """
-    settings = Settings(config_file)
-
-    # Implementation for scraping snow conditions would go here. This is a placeholder for the actual scraping logic.
-    print(f"Scraping snow condition data using settings from {config_file}...")
+        console.print("[green]Scraping complete![/green]")

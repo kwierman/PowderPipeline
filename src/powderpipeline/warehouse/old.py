@@ -1,8 +1,7 @@
-from sqlmodel import Field, SQLModel
 import uuid
 
-
 from django.db import models
+from sqlmodel import Field, SQLModel
 
 # Create your models here.
 
