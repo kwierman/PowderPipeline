@@ -84,9 +84,11 @@ async def get_snow_conditions(lat, lon, elevation_ft, day_of_year, year=2024):
 
 
 class SnowAnalyzer(Analyzer):
-    def __init__(self, session, settings):
+    def __init__(self, session, settings, buffer_len=100):
         self.session = session
         self.settings = settings
+        self.buffer = []
+        self.buffer_len = buffer_len
 
     async def analyze(
         self,
@@ -95,20 +97,23 @@ class SnowAnalyzer(Analyzer):
         end_day_of_year = self.settings.end_of_snow_year_day
         this_year = date.today().year
         ten_years_ago = this_year - 10
+        days_to_analyze = list(range(start_day_of_year, 366))
+        days_to_analyze.extend(range(1, end_day_of_year + 1))
 
-        for resort in track(
-            SkiResort.get_all(self.session), description="Analyzing ski resorts..."
+        for day_of_year in track(
+            days_to_analyze, description="Analyzing daily data..."
         ):
             for year in track(
-                range(ten_years_ago, this_year + 1),
+                range(this_year, ten_years_ago, -1),
                 description="Analyzing yearly data...",
             ):
-                days_to_analyze = list(range(start_day_of_year, 366))
-                days_to_analyze.extend(range(1, end_day_of_year + 1))
-                for day_of_year in track(
-                    days_to_analyze,
-                    description="Analyzing day of year data...",
+                for resort in track(
+                    SkiResort.get_all(self.session),
+                    description="Analyzing ski resorts...",
                 ):
+                    if resort.base_elevation is None or resort.summit_elevation is None:
+                        continue
+
                     date_ = date(year, 1, 1) + timedelta(days=day_of_year - 1)
                     snow, created = Snow.get_or_create(
                         self.session, resort_id=resort.id, record_date=date_
@@ -117,34 +122,39 @@ class SnowAnalyzer(Analyzer):
                         logger.info(
                             f"Analyzing snow data for {resort.resort_name} on {date_}"
                         )
-                        base_data = None
-                        if resort.base_elevation is not None:
-                            base_data = await get_snow_conditions(
-                                resort.latitude,
-                                resort.longitude,
-                                resort.base_elevation,
-                                day_of_year,
-                                year=year,
-                            )
+                        logger.info(
+                            f"Elevation Base: {resort.base_elevation}, Summit: {resort.summit_elevation}"
+                        )
+
+                        base_data = await get_snow_conditions(
+                            resort.latitude,
+                            resort.longitude,
+                            resort.base_elevation,
+                            day_of_year,
+                            year=year,
+                        )
+                        if base_data is None:
+                            continue
                         summit_data = None
-                        if resort.summit_elevation is not None:
-                            summit_data = await get_snow_conditions(
-                                resort.latitude,
-                                resort.longitude,
-                                resort.summit_elevation,
-                                day_of_year,
-                                year=year,
-                            )
-                        if base_data and summit_data:
-                            snow.base_snowfall_inches = base_data[
-                                "total_snowfall_inches"
-                            ]
-                            snow.base_snow_depth_inches = base_data["snow_depth_inches"]
-                            snow.summit_snowfall_inches = summit_data[
-                                "total_snowfall_inches"
-                            ]
-                            snow.summit_snow_depth_inches = summit_data[
-                                "snow_depth_inches"
-                            ]
-                            self.session.add(snow)
+                        summit_data = await get_snow_conditions(
+                            resort.latitude,
+                            resort.longitude,
+                            resort.summit_elevation,
+                            day_of_year,
+                            year=year,
+                        )
+                        if summit_data is None:
+                            continue
+
+                        snow.base_snowfall_inches = base_data["total_snowfall_inches"]
+                        snow.base_snow_depth_inches = base_data["snow_depth_inches"]
+                        snow.summit_snowfall_inches = summit_data[
+                            "total_snowfall_inches"
+                        ]
+                        snow.summit_snow_depth_inches = summit_data["snow_depth_inches"]
+                        self.buffer.append(snow)
+                        if len(self.buffer) > self.buffer_len:
+                            for snow in self.buffer:
+                                self.session.add(snow)
                             self.session.commit()
+                            self.buffer = []

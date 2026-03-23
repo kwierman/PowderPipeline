@@ -174,7 +174,7 @@ class SkiResortScraper(BaseScraper):
             try:
                 self.logger.info(f"Navigating to resort page: {resort_url}")
                 await page.goto(resort_url, timeout=60000)
-                await page.wait_for_load_state("networkidle", timeout=60000)
+                await page.wait_for_load_state("load", timeout=60000)
                 await asyncio.sleep(self.sleep)
 
                 content = await page.content()
@@ -265,81 +265,93 @@ class SkiResortScraper(BaseScraper):
         }
 
         try:
-            selectors = [
-                'dt:has-text("Base") + dd',
-                'dt:has-text("Summit") + dd',
-                'dt:has-text("Top") + dd',
-                'dt:has-text("Peak") + dd',
-                "[data-elevation-type='base']",
-                "[data-elevation-type='summit']",
-                "[class*='elevation'][class*='base']",
-                "[class*='elevation'][class*='summit']",
-            ]
+            json_ld_data = await self._extract_json_ld_elevations(page)
+            if json_ld_data:
+                elevations["base_elevation"] = json_ld_data.get("base_elevation")
+                elevations["summit_elevation"] = json_ld_data.get("summit_elevation")
+                if elevations["base_elevation"] and elevations["summit_elevation"]:
+                    return elevations
 
-            for selector in selectors:
-                try:
-                    elements = await page.query_selector_all(selector)
-                    for elem in elements:
-                        text = await elem.inner_text()
-                        match = re.search(r"([\d,]+)", text)
-                        if match:
-                            elev = float(match.group(1).replace(",", ""))
-                            selector_lower = selector.lower()
-                            if (
-                                "base" in selector_lower
-                                and elevations["base_elevation"] is None
-                            ):
-                                elevations["base_elevation"] = elev
-                            elif (
-                                "summit" in selector_lower
-                                or "top" in selector_lower
-                                or "peak" in selector_lower
-                            ) and elevations["summit_elevation"] is None:
-                                elevations["summit_elevation"] = elev
-                except Exception:
-                    continue
+            main_texts = await page.query_selector_all(".styles_main_text__vitr9")
+            secondary_texts = await page.query_selector_all(
+                ".styles_secondary_text__iHrky"
+            )
 
-            page_text = await page.inner_text("body")
-            page_text_lower = page_text.lower()
+            for i, main_text in enumerate(main_texts):
+                if i >= len(secondary_texts):
+                    break
+                value = await main_text.inner_text()
+                elev_match = re.search(r"([\d,]+)\s*['\"]?", value)
+                if elev_match:
+                    elev = float(elev_match.group(1).replace(",", ""))
+                    if 1000 < elev < 16000:
+                        label = await secondary_texts[i].inner_text()
+                        label_lower = label.lower()
+                        if "base" in label_lower:
+                            elevations["base_elevation"] = elev
+                        elif "summit" in label_lower or "top" in label_lower:
+                            elevations["summit_elevation"] = elev
 
-            base_patterns = [
-                r"base\s*elevation[:\s]*([\d,]+)\s*(?:ft|m)",
-                r"base[:\s]*([\d,]+)\s*(?:ft|m)",
-                r"elevation at base[:\s]*([\d,]+)",
-                r"base\s*:\s*([\d,]+)\s*(?:ft|m)",
-            ]
-            for pattern in base_patterns:
-                match = re.search(pattern, page_text_lower)
-                if match:
-                    elev_str = match.group(1).replace(",", "")
+            if (
+                elevations["base_elevation"] is None
+                or elevations["summit_elevation"] is None
+            ):
+                page_text = await page.inner_text("body")
+                all_elevations = re.findall(r"([\d,]+)\s*['\"]", page_text)
+                valid_elevs = []
+                for n in all_elevations:
                     try:
-                        elevations["base_elevation"] = float(elev_str)
-                        break
+                        val = float(n.replace(",", ""))
+                        if 1000 < val < 16000:
+                            valid_elevs.append(val)
                     except ValueError:
-                        pass
+                        continue
 
-            summit_patterns = [
-                r"summit\s*elevation[:\s]*([\d,]+)\s*(?:ft|m)",
-                r"summit[:\s]*([\d,]+)\s*(?:ft|m)",
-                r"top[:\s]*([\d,]+)\s*(?:ft|m)",
-                r"peak\s*elevation[:\s]*([\d,]+)",
-                r"maximum\s*elevation[:\s]*([\d,]+)",
-                r"max\s*elevation[:\s]*([\d,]+)",
-            ]
-            for pattern in summit_patterns:
-                match = re.search(pattern, page_text_lower)
-                if match:
-                    elev_str = match.group(1).replace(",", "")
-                    try:
-                        elevations["summit_elevation"] = float(elev_str)
-                        break
-                    except ValueError:
-                        pass
+                if elevations["base_elevation"] is None and valid_elevs:
+                    elevations["base_elevation"] = min(valid_elevs)
+                if elevations["summit_elevation"] is None and len(valid_elevs) >= 2:
+                    elevations["summit_elevation"] = max(valid_elevs)
 
         except Exception as e:
             self.logger.error(f"Error extracting elevations: {e}")
 
         return elevations
+
+    async def _extract_json_ld_elevations(self, page: Page) -> dict:
+        try:
+            content = await page.content()
+            soup = BeautifulSoup(content, "html.parser")
+            script_tags = soup.find_all("script", type="application/ld+json")
+            for tag in script_tags:
+                try:
+                    text = tag.string
+                    if not text:
+                        continue
+                    data = json.loads(text)
+                    items = data if isinstance(data, list) else [data]
+                    for item in items:
+                        if "additionalProperty" in item:
+                            result = {}
+                            for prop in item.get("additionalProperty", []):
+                                name = prop.get("name", "").lower()
+                                value = prop.get("value")
+                                if "base elevation" in name and value:
+                                    result["base_elevation"] = float(value)
+                                elif "summit elevation" in name and value:
+                                    result["summit_elevation"] = float(value)
+                            if result:
+                                return result
+                except (json.JSONDecodeError, TypeError):
+                    continue
+        except Exception:
+            pass
+        return {}
+
+    def _normalize_elevation(self, value: float, unit: str) -> float:
+        """Convert elevation to feet. Defaults to feet if unit is unknown."""
+        if unit and unit.lower() == "m":
+            return value * 3.28084
+        return value
 
     def _detect_pass_affiliation(self, soup: BeautifulSoup) -> Optional[str]:
         page_text = soup.get_text().lower()
@@ -368,6 +380,12 @@ class SkiResortScraper(BaseScraper):
                 resort = SkiResort(**details)
                 self.session.add(resort)
                 self.scraped_count += 1
+                self.logger.info(
+                    f"Inserted resort: {details.get('resort_name')} | "
+                    f"Base: {details.get('base_elevation')} | "
+                    f"Summit: {details.get('summit_elevation')} | "
+                    f"Lat: {details.get('latitude')} | Lon: {details.get('longitude')}"
+                )
             except Exception as e:
                 self.logger.error(f"Error creating SkiResort: {e}")
                 self.error_count += 1

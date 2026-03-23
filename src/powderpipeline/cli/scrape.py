@@ -30,7 +30,7 @@ logging.basicConfig(
 @scraper_app.command("ski-resorts")
 def scrape_ski_resorts(
     config_file: Path = Path("config.yaml"),
-    headless: bool = True,
+    headless: bool = False,
 ):
     """
     Scrape ski resort data from OnTheSnow.
